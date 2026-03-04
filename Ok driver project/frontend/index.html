@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>okDriver — Fleet Command</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:       #080C10;
+    --surface:  #0D1117;
+    --card:     #111820;
+    --border:   #1E2D3D;
+    --accent:   #00E5FF;
+    --green:    #00FF88;
+    --yellow:   #FFD600;
+    --red:      #FF3B5C;
+    --orange:   #FF7A30;
+    --text:     #E8EDF2;
+    --muted:    #5A7A94;
+    --font:     'Syne', sans-serif;
+    --mono:     'IBM Plex Mono', monospace;
+  }
+
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,229,255,0.015) 2px, rgba(0,229,255,0.015) 4px);
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  .shell {
+    display: grid;
+    grid-template-rows: 56px 1fr;
+    grid-template-columns: 220px 1fr;
+    height: 100vh;
+  }
+
+  .topbar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 800; font-size: 18px; letter-spacing: -0.5px;
+  }
+  .logo-icon {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), #0080FF);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .logo span { color: var(--accent); }
+  .topbar-right { display: flex; align-items: center; gap: 16px; }
+  .live-badge {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(0,255,136,0.1);
+    border: 1px solid rgba(0,255,136,0.3);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 11px; font-weight: 700; color: var(--green);
+    letter-spacing: 1px; text-transform: uppercase;
+    font-family: var(--mono);
+  }
+  .live-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--green);
+    animation: pulse-dot 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+  }
+  .timestamp {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+  }
+  .ws-status {
+    font-family: var(--mono); font-size: 11px;
+    padding: 3px 10px; border-radius: 4px;
+    background: rgba(90,122,148,0.2);
+    color: var(--muted);
+    transition: all 0.3s;
+  }
+  .ws-status.connected { background: rgba(0,255,136,0.1); color: var(--green); }
+  .ws-status.error { background: rgba(255,59,92,0.1); color: var(--red); }
+
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 20px 0;
+    overflow-y: auto;
+  }
+  .sidebar-section { padding: 0 16px 20px; }
+  .sidebar-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--muted);
+    padding: 0 8px 10px;
+  }
+  .driver-card {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 8px; border-radius: 8px;
+    cursor: pointer; transition: background 0.2s;
+    margin-bottom: 4px;
+  }
+  .driver-card:hover { background: rgba(255,255,255,0.04); }
+  .driver-card.alert { background: rgba(255,59,92,0.08); border: 1px solid rgba(255,59,92,0.2); }
+  .driver-avatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; flex-shrink: 0;
+    background: linear-gradient(135deg, #1E3A5F, #0D2137);
+    border: 2px solid var(--border);
+  }
+  .driver-info { flex: 1; min-width: 0; }
+  .driver-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .driver-vehicle { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+  .risk-pill {
+    font-size: 10px; font-weight: 700; font-family: var(--mono);
+    padding: 2px 7px; border-radius: 10px;
+    background: rgba(255,255,255,0.06); color: var(--muted);
+    transition: all 0.3s;
+  }
+  .risk-pill.low { background: rgba(0,255,136,0.1); color: var(--green); }
+  .risk-pill.med { background: rgba(255,214,0,0.1); color: var(--yellow); }
+  .risk-pill.high { background: rgba(255,59,92,0.15); color: var(--red); }
+
+  .main {
+    overflow-y: auto;
+    padding: 24px;
+    display: flex; flex-direction: column; gap: 20px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+  .metric-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+  }
+  .metric-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--accent-line, var(--accent));
+    opacity: 0.6;
+  }
+  .metric-card.green { --accent-line: var(--green); }
+  .metric-card.yellow { --accent-line: var(--yellow); }
+  .metric-card.red { --accent-line: var(--red); }
+  .metric-card.blue { --accent-line: var(--accent); }
+  .metric-card.pulse { animation: card-flash 0.4s ease; }
+  @keyframes card-flash {
+    0% { border-color: var(--accent); }
+    100% { border-color: var(--border); }
+  }
+  .metric-icon {
+    font-size: 22px; margin-bottom: 12px;
+    opacity: 0.8;
+  }
+  .metric-value {
+    font-size: 32px; font-weight: 800; letter-spacing: -1px;
+    line-height: 1;
+    font-family: var(--mono);
+  }
+  .metric-label {
+    font-size: 11px; font-weight: 600; letter-spacing: 1.5px;
+    text-transform: uppercase; color: var(--muted);
+    margin-top: 6px;
+  }
+  .metric-delta {
+    position: absolute; top: 16px; right: 16px;
+    font-size: 10px; font-family: var(--mono);
+    color: var(--muted);
+  }
+
+  .ticker-bar {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 16px;
+    display: flex; align-items: center; gap: 12px;
+    overflow: hidden;
+  }
+  .ticker-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--accent);
+    white-space: nowrap; font-family: var(--mono);
+    flex-shrink: 0;
+  }
+  .ticker-scroll {
+    flex: 1; overflow: hidden; position: relative;
+  }
+  .ticker-inner {
+    display: flex; gap: 32px;
+    transition: transform 0.5s ease;
+    white-space: nowrap;
+  }
+  .ticker-item {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-family: var(--mono);
+    color: var(--muted);
+  }
+  .ticker-item.high { color: var(--red); }
+  .ticker-item.medium { color: var(--yellow); }
+
+  .mid-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; }
+
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-title {
+    font-size: 12px; font-weight: 700; letter-spacing: 1.5px;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .panel-badge {
+    font-size: 10px; font-family: var(--mono);
+    background: rgba(0,229,255,0.1); color: var(--accent);
+    padding: 2px 8px; border-radius: 10px;
+    border: 1px solid rgba(0,229,255,0.2);
+  }
+
+  .event-feed { max-height: 340px; overflow-y: auto; }
+  .event-feed::-webkit-scrollbar { width: 4px; }
+  .event-feed::-webkit-scrollbar-track { background: transparent; }
+  .event-feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .event-row {
+    display: grid;
+    grid-template-columns: 18px 120px 90px 70px 70px 1fr;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 18px;
+    border-bottom: 1px solid rgba(30,45,61,0.5);
+    transition: background 0.2s;
+    animation: slide-in 0.3s ease;
+  }
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .event-row:hover { background: rgba(255,255,255,0.02); }
+  .event-row:last-child { border-bottom: none; }
+  .event-sev-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .event-sev-dot.high { background: var(--red); box-shadow: 0 0 6px var(--red); }
+  .event-sev-dot.medium { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+  .event-sev-dot.low { background: var(--green); }
+  .event-driver { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .event-type {
+    font-size: 11px; font-family: var(--mono);
+    padding: 2px 8px; border-radius: 4px;
+    background: rgba(255,255,255,0.05);
+    white-space: nowrap;
+  }
+  .event-type.speeding { background: rgba(255,59,92,0.1); color: var(--red); }
+  .event-type.harsh_braking { background: rgba(255,122,48,0.1); color: var(--orange); }
+  .event-type.drowsiness { background: rgba(255,214,0,0.1); color: var(--yellow); }
+  .event-type.lane_departure { background: rgba(0,229,255,0.1); color: var(--accent); }
+  .event-type.tailgating { background: rgba(160,90,255,0.1); color: #A05AFF; }
+  .event-speed {
+    font-family: var(--mono); font-size: 12px;
+    text-align: right;
+  }
+  .event-speed.danger { color: var(--red); font-weight: 700; }
+  .event-time { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+  .event-risk { font-size: 11px; font-family: var(--mono); }
+  .feed-header-row {
+    display: grid;
+    grid-template-columns: 18px 120px 90px 70px 70px 1fr;
+    gap: 12px; padding: 8px 18px;
+    border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--muted);
+  }
+
+  .chart-wrap { padding: 16px; height: 300px; position: relative; }
+
+  .bottom-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+  .alert-feed { max-height: 240px; overflow-y: auto; }
+  .alert-item {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 12px 18px;
+    border-bottom: 1px solid rgba(30,45,61,0.5);
+    animation: slide-in 0.3s ease;
+  }
+  .alert-item.high { background: rgba(255,59,92,0.05); }
+  .alert-icon {
+    width: 30px; height: 30px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0;
+  }
+  .alert-icon.high { background: rgba(255,59,92,0.15); }
+  .alert-icon.medium { background: rgba(255,214,0,0.1); }
+  .alert-icon.low { background: rgba(0,255,136,0.1); }
+  .alert-content { flex: 1; min-width: 0; }
+  .alert-title { font-size: 12px; font-weight: 700; margin-bottom: 2px; }
+  .alert-title.high { color: var(--red); }
+  .alert-title.medium { color: var(--yellow); }
+  .alert-title.low { color: var(--green); }
+  .alert-desc { font-size: 11px; color: var(--muted); line-height: 1.4; }
+  .alert-time { font-size: 10px; color: var(--muted); font-family: var(--mono); margin-top: 4px; }
+
+  .donut-wrap { padding: 16px; height: 240px; display: flex; align-items: center; justify-content: center; }
+  .donut-wrap canvas { max-height: 200px; }
+
+  .risk-table { width: 100%; }
+  .risk-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 18px;
+    border-bottom: 1px solid rgba(30,45,61,0.5);
+  }
+  .risk-row:last-child { border-bottom: none; }
+  .risk-name { flex: 1; font-size: 12px; font-weight: 600; }
+  .risk-bar-wrap { width: 90px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .risk-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+  .risk-val { width: 36px; text-align: right; font-family: var(--mono); font-size: 11px; }
+
+  .dashcam-panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .dashcam-wrap {
+    position: relative;
+    padding-bottom: 56.25%; /* 16:9 */
+    height: 0;
+  }
+  .dashcam-wrap iframe {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    border: none;
+  }
+  .dashcam-overlay {
+    position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, transparent 30%, transparent 70%, rgba(8,12,16,0.7) 100%);
+  }
+  .dashcam-hud {
+    position: absolute; bottom: 12px; left: 12px;
+    font-family: var(--mono); font-size: 11px; color: rgba(255,255,255,0.8);
+    display: flex; gap: 16px;
+  }
+  .hud-item { display: flex; align-items: center; gap: 5px; }
+  .hud-label { color: var(--accent); }
+  .speed-warning {
+    position: absolute; top: 12px; right: 12px;
+    background: rgba(255,59,92,0.9);
+    color: white; font-weight: 700; font-size: 12px;
+    padding: 4px 12px; border-radius: 6px;
+    display: none;
+  }
+  .speed-warning.show { display: block; animation: blink 0.5s ease-in-out infinite alternate; }
+  @keyframes blink { from { opacity: 1; } to { opacity: 0.5; } }
+
+  .main::-webkit-scrollbar { width: 6px; }
+  .main::-webkit-scrollbar-track { background: transparent; }
+  .main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .empty-state {
+    text-align: center; padding: 40px 20px; color: var(--muted);
+    font-size: 12px;
+  }
+  .empty-state div { font-size: 28px; margin-bottom: 8px; }
+
+  .count-up { transition: all 0.3s; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header class="topbar">
+    <div class="logo">
+      <div class="logo-icon">🚗</div>
+      ok<span>Driver</span> &nbsp;Fleet Command
+    </div>
+    <div class="topbar-right">
+      <span id="timestamp" class="timestamp">--:--:--</span>
+      <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+      <span id="wsStatus" class="ws-status">CONNECTING…</span>
+    </div>
+  </header>
+
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Active Drivers</div>
+      <div id="driverList"></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="metrics-grid">
+      <div class="metric-card blue" id="card-trips">
+        <div class="metric-icon">🛣️</div>
+        <div class="metric-value count-up" id="met-trips">0</div>
+        <div class="metric-label">Total Trips</div>
+        <div class="metric-delta" id="met-trips-d">—</div>
+      </div>
+      <div class="metric-card green" id="card-drivers">
+        <div class="metric-icon">👤</div>
+        <div class="metric-value count-up" id="met-drivers">0</div>
+        <div class="metric-label">Live Drivers</div>
+        <div class="metric-delta" id="met-speed">⌀ — km/h</div>
+      </div>
+      <div class="metric-card yellow" id="card-violations">
+        <div class="metric-icon">⚠️</div>
+        <div class="metric-value count-up" id="met-violations">0</div>
+        <div class="metric-label">Violations</div>
+        <div class="metric-delta" id="met-vd">—</div>
+      </div>
+      <div class="metric-card red" id="card-risk">
+        <div class="metric-icon">🔴</div>
+        <div class="metric-value count-up" id="met-risk">0</div>
+        <div class="metric-label">High Risk Drivers</div>
+        <div class="metric-delta" id="met-rd">of <span id="met-total">0</span> events</div>
+      </div>
+    </div>
+
+    <!-- Alert Ticker -->
+    <div class="ticker-bar">
+      <span class="ticker-label">⚡ LIVE ALERTS</span>
+      <div class="ticker-scroll">
+        <div class="ticker-inner" id="tickerInner">
+          <span class="ticker-item">Waiting for events…</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dashcam + Event Feed -->
+    <div class="mid-row">
+      <!-- Event Feed -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Live Event Feed</span>
+          <span class="panel-badge" id="feedCount">0 events</span>
+        </div>
+        <div class="feed-header-row">
+          <span></span>
+          <span>Driver</span>
+          <span>Event</span>
+          <span>Speed</span>
+          <span>Risk</span>
+          <span>Time</span>
+        </div>
+        <div class="event-feed" id="eventFeed">
+          <div class="empty-state"><div>📡</div>Waiting for events…</div>
+        </div>
+      </div>
+
+      <!-- Event Type Chart -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Event Distribution</span>
+          <span class="panel-badge">Live</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="lineChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Row -->
+    <div class="bottom-row">
+      <!-- Alert Log -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">High Alert Log</span>
+          <span class="panel-badge" id="alertCount">0</span>
+        </div>
+        <div class="alert-feed" id="alertFeed">
+          <div class="empty-state"><div>🔔</div>No alerts yet</div>
+        </div>
+      </div>
+
+      <!-- Donut -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Event Breakdown</span>
+        </div>
+        <div class="donut-wrap">
+          <canvas id="donutChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Risk Leaderboard -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Risk Leaderboard</span>
+        </div>
+        <div id="riskTable" class="risk-table">
+          <div class="empty-state"><div>📊</div>Loading…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dashcam Simulation -->
+    <div class="dashcam-panel">
+      <div class="panel-header">
+        <span class="panel-title">📷 Live Dashcam Feed — Simulated</span>
+        <span class="panel-badge">Vehicle KA-01-AB-1234</span>
+      </div>
+      <div class="dashcam-wrap">
+        <iframe
+          src="https://www.youtube.com/embed/ydYDqZQpim8?autoplay=1&mute=1&loop=1&playlist=ydYDqZQpim8&controls=0"
+          allow="autoplay; encrypted-media"
+          allowfullscreen
+          title="Dashcam Simulation">
+        </iframe>
+        <div class="dashcam-overlay"></div>
+        <div class="dashcam-hud">
+          <div class="hud-item"><span class="hud-label">SPD</span><span id="hudSpeed">-- km/h</span></div>
+          <div class="hud-item"><span class="hud-label">GPS</span><span id="hudGps">12.97°N 77.59°E</span></div>
+          <div class="hud-item"><span class="hud-label">TRIP</span><span id="hudTrip">001</span></div>
+          <div class="hud-item"><span class="hud-label">REC</span><span style="color:var(--red)">● REC</span></div>
+        </div>
+        <div class="speed-warning" id="speedWarning">⚠ SPEED ALERT</div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+
+const API = 'http://localhost:8000';
+const WS_URL = 'ws://localhost:8000/ws';
+
+let metrics = {};
+let events = [];
+let alerts = [];
+let lineData = { labels: [], datasets: [] };
+let lineChart, donutChart;
+let tickerQueue = [];
+const MAX_EVENTS = 60;
+const MAX_ALERTS = 30;
+
+
+function clock() {
+  document.getElementById('timestamp').textContent =
+    new Date().toLocaleTimeString('en-IN', { hour12: false });
+}
+setInterval(clock, 1000); clock();
+
+
+function initCharts() {
+  const ctxLine = document.getElementById('lineChart').getContext('2d');
+  const ctxDonut = document.getElementById('donutChart').getContext('2d');
+
+  Chart.defaults.color = '#5A7A94';
+  Chart.defaults.borderColor = '#1E2D3D';
+
+  lineChart = new Chart(ctxLine, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'Speeding', data: [], borderColor: '#FF3B5C', backgroundColor: 'rgba(255,59,92,0.08)', tension: 0.4, pointRadius: 2, borderWidth: 2 },
+        { label: 'Braking', data: [], borderColor: '#FF7A30', backgroundColor: 'rgba(255,122,48,0.08)', tension: 0.4, pointRadius: 2, borderWidth: 2 },
+        { label: 'Drowsiness', data: [], borderColor: '#FFD600', backgroundColor: 'rgba(255,214,0,0.08)', tension: 0.4, pointRadius: 2, borderWidth: 2 },
+        { label: 'Lane Dep.', data: [], borderColor: '#00E5FF', backgroundColor: 'rgba(0,229,255,0.05)', tension: 0.4, pointRadius: 2, borderWidth: 2 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 300 },
+      plugins: { legend: { labels: { boxWidth: 10, font: { size: 10, family: "'IBM Plex Mono'" } } } },
+      scales: {
+        x: { grid: { color: '#1E2D3D' }, ticks: { font: { size: 9, family: "'IBM Plex Mono'" }, maxTicksLimit: 8 } },
+        y: { grid: { color: '#1E2D3D' }, ticks: { font: { size: 9, family: "'IBM Plex Mono'" } }, beginAtZero: true }
+      }
+    }
+  });
+
+  donutChart = new Chart(ctxDonut, {
+    type: 'doughnut',
+    data: {
+      labels: ['Speeding', 'Braking', 'Drowsiness', 'Lane Dep.', 'Tailgating'],
+      datasets: [{
+        data: [0, 0, 0, 0, 0],
+        backgroundColor: ['#FF3B5C', '#FF7A30', '#FFD600', '#00E5FF', '#A05AFF'],
+        borderColor: '#111820', borderWidth: 3,
+        hoverOffset: 8,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '65%',
+      animation: { duration: 400 },
+      plugins: {
+        legend: { position: 'right', labels: { boxWidth: 10, font: { size: 10, family: "'IBM Plex Mono'" }, padding: 12 } }
+      }
+    }
+  });
+}
+
+
+function renderDrivers(drivers) {
+  const el = document.getElementById('driverList');
+  if (!drivers || !drivers.length) { el.innerHTML = '<div class="empty-state">No drivers</div>'; return; }
+  el.innerHTML = drivers.map(d => {
+    const risk = d.risk_score || 0;
+    const riskClass = risk >= 36 ? 'high' : risk >= 20 ? 'med' : 'low';
+    const initial = d.name.split(' ').map(w => w[0]).join('').slice(0, 2);
+    return `
+    <div class="driver-card ${risk >= 36 ? 'alert' : ''}">
+      <div class="driver-avatar">${initial}</div>
+      <div class="driver-info">
+        <div class="driver-name">${d.name}</div>
+        <div class="driver-vehicle">${d.vehicle_id}</div>
+      </div>
+      <div class="risk-pill ${riskClass}">${risk.toFixed(0)}</div>
+    </div>`;
+  }).join('');
+}
+
+
+function renderMetrics(m) {
+  metrics = m;
+  animateNum('met-trips', m.total_trips);
+  animateNum('met-drivers', m.live_drivers);
+  animateNum('met-violations', m.violation_count);
+  animateNum('met-risk', m.high_risk_drivers);
+  document.getElementById('met-total').textContent = m.total_events;
+  document.getElementById('met-speed').textContent = `⌀ ${m.avg_speed} km/h`;
+
+  ['card-trips','card-drivers','card-violations','card-risk'].forEach(id => {
+    const el = document.getElementById(id);
+    el.classList.remove('pulse');
+    void el.offsetWidth;
+    el.classList.add('pulse');
+  });
+
+  // Donut update
+  if (m.event_breakdown && donutChart) {
+    const eb = m.event_breakdown;
+    donutChart.data.datasets[0].data = [
+      eb.speeding || 0, eb.harsh_braking || 0, eb.drowsiness || 0,
+      eb.lane_departure || 0, eb.tailgating || 0
+    ];
+    donutChart.update('none');
+  }
+
+  // Risk table
+  if (m.driver_risks) renderRiskTable(m.driver_risks);
+}
+
+function animateNum(id, target) {
+  const el = document.getElementById(id);
+  const current = parseInt(el.textContent) || 0;
+  if (current === target) return;
+  const diff = target - current;
+  const steps = 10;
+  let step = 0;
+  const iv = setInterval(() => {
+    step++;
+    el.textContent = Math.round(current + (diff * step / steps));
+    if (step >= steps) { el.textContent = target; clearInterval(iv); }
+  }, 30);
+}
+
+function renderEventFeed() {
+  const feed = document.getElementById('eventFeed');
+  document.getElementById('feedCount').textContent = `${events.length} events`;
+  if (!events.length) { feed.innerHTML = '<div class="empty-state"><div>📡</div>Waiting for events…</div>'; return; }
+  feed.innerHTML = events.slice(0, 40).map(e => {
+    const t = new Date(e.timestamp);
+    const timeStr = t.toLocaleTimeString('en-IN', { hour12: false });
+    const isSpeed = e.event_type === 'speeding' && e.speed > 80;
+    return `
+    <div class="event-row">
+      <div class="event-sev-dot ${e.severity}"></div>
+      <div class="event-driver">${e.driver_name || 'Driver ' + e.driver_id}</div>
+      <div class="event-type ${e.event_type}">${e.event_type.replace('_', ' ')}</div>
+      <div class="event-speed ${isSpeed ? 'danger' : ''}">${e.speed.toFixed(0)} <small>km/h</small></div>
+      <div class="event-risk" style="color:${riskColor(e.risk_score)}">${(e.risk_score || 0).toFixed(0)}</div>
+      <div class="event-time">${timeStr}</div>
+    </div>`;
+  }).join('');
+}
+
+function riskColor(r) {
+  if (!r) return '#5A7A94';
+  if (r >= 36) return '#FF3B5C';
+  if (r >= 20) return '#FFD600';
+  return '#00FF88';
+}
+
+const ALERT_ICONS = { speeding: '🚀', harsh_braking: '🛑', drowsiness: '😴', lane_departure: '↔️', tailgating: '🚗' };
+function addAlert(e) {
+  if (e.severity === 'low') return;
+  const alertEl = document.getElementById('alertFeed');
+  const first = alertEl.querySelector('.empty-state');
+  if (first) alertEl.innerHTML = '';
+  const t = new Date(e.timestamp).toLocaleTimeString('en-IN', { hour12: false });
+  const item = document.createElement('div');
+  item.className = `alert-item ${e.severity}`;
+  item.innerHTML = `
+    <div class="alert-icon ${e.severity}">${ALERT_ICONS[e.event_type] || '⚠️'}</div>
+    <div class="alert-content">
+      <div class="alert-title ${e.severity}">${e.event_type.replace('_',' ').toUpperCase()}</div>
+      <div class="alert-desc">${e.driver_name} — ${e.speed.toFixed(0)} km/h · Risk: ${(e.risk_score||0).toFixed(0)}</div>
+      <div class="alert-time">${t}</div>
+    </div>`;
+  alertEl.prepend(item);
+  alerts.push(item);
+  if (alerts.length > MAX_ALERTS) { alertEl.removeChild(alertEl.lastChild); alerts.pop(); }
+  document.getElementById('alertCount').textContent = alerts.length;
+}
+
+function addTicker(e) {
+  const inner = document.getElementById('tickerInner');
+  const first = inner.querySelector('.ticker-item');
+  if (first && first.textContent === 'Waiting for events…') inner.innerHTML = '';
+  const span = document.createElement('span');
+  span.className = `ticker-item ${e.severity}`;
+  span.textContent = `${e.driver_name}: ${e.event_type.replace('_',' ')} @ ${e.speed.toFixed(0)}km/h`;
+  inner.prepend(span);
+  while (inner.children.length > 8) inner.removeChild(inner.lastChild);
+}
+
+const lineHistory = { labels: [], speeding: [], harsh_braking: [], drowsiness: [], lane_departure: [] };
+function pushLineData(e) {
+  const t = new Date(e.timestamp).toLocaleTimeString('en-IN', { hour12: false });
+  const maxPts = 20;
+  lineHistory.labels.push(t);
+  lineHistory.speeding.push(e.event_type === 'speeding' ? e.speed : null);
+  lineHistory.harsh_braking.push(e.event_type === 'harsh_braking' ? e.speed : null);
+  lineHistory.drowsiness.push(e.event_type === 'drowsiness' ? e.speed : null);
+  lineHistory.lane_departure.push(e.event_type === 'lane_departure' ? e.speed : null);
+  if (lineHistory.labels.length > maxPts) {
+    lineHistory.labels.shift(); lineHistory.speeding.shift();
+    lineHistory.harsh_braking.shift(); lineHistory.drowsiness.shift();
+    lineHistory.lane_departure.shift();
+  }
+  lineChart.data.labels = [...lineHistory.labels];
+  lineChart.data.datasets[0].data = [...lineHistory.speeding];
+  lineChart.data.datasets[1].data = [...lineHistory.harsh_braking];
+  lineChart.data.datasets[2].data = [...lineHistory.drowsiness];
+  lineChart.data.datasets[3].data = [...lineHistory.lane_departure];
+  lineChart.update('none');
+}
+
+function renderRiskTable(risks) {
+  const el = document.getElementById('riskTable');
+  const sorted = [...risks].sort((a, b) => b.risk - a.risk);
+  el.innerHTML = sorted.map(d => {
+    const pct = Math.min(100, d.risk);
+    const color = d.risk >= 36 ? '#FF3B5C' : d.risk >= 20 ? '#FFD600' : '#00FF88';
+    return `
+    <div class="risk-row">
+      <div class="risk-name">${d.name.split(' ')[0]}</div>
+      <div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+      <div class="risk-val" style="color:${color}">${d.risk.toFixed(0)}</div>
+    </div>`;
+  }).join('');
+}
+
+function updateHud(e) {
+  document.getElementById('hudSpeed').textContent = `${e.speed.toFixed(0)} km/h`;
+  document.getElementById('hudGps').textContent = `${(e.latitude||12.97).toFixed(2)}°N ${(e.longitude||77.59).toFixed(2)}°E`;
+  document.getElementById('hudTrip').textContent = String(e.trip_id).padStart(3, '0');
+  const warn = document.getElementById('speedWarning');
+  if (e.speed > 80) { warn.classList.add('show'); setTimeout(() => warn.classList.remove('show'), 3000); }
+}
+let ws, reconnectTimer;
+function connectWS() {
+  const st = document.getElementById('wsStatus');
+  st.textContent = 'CONNECTING…'; st.className = 'ws-status';
+  try {
+    ws = new WebSocket(WS_URL);
+  } catch(e) { fallbackPolling(); return; }
+
+  ws.onopen = () => {
+    st.textContent = 'CONNECTED'; st.className = 'ws-status connected';
+    clearTimeout(reconnectTimer);
+  };
+
+  ws.onmessage = (msg) => {
+    try {
+      const data = JSON.parse(msg.data);
+      if (data.type === 'init') {
+        renderDrivers(data.drivers);
+        if (data.events) {
+          events = data.events;
+          renderEventFeed();
+        }
+        if (data.metrics) renderMetrics(data.metrics);
+      } else if (data.type === 'new_event') {
+        const e = data.event;
+        events.unshift(e);
+        if (events.length > MAX_EVENTS) events.pop();
+        renderEventFeed();
+        addAlert(e);
+        addTicker(e);
+        pushLineData(e);
+        updateHud(e);
+        if (data.metrics) renderMetrics(data.metrics);
+        // Update driver sidebar risk scores
+        if (data.metrics && data.metrics.driver_risks) {
+          in_mem_drivers = data.metrics.driver_risks.map((d, i) => ({
+            id: i + 1, name: d.name, vehicle_id: d.vehicle, status: 'active', risk_score: d.risk
+          }));
+          renderDrivers(in_mem_drivers);
+        }
+      }
+    } catch(err) { console.error('WS parse error', err); }
+  };
+
+  ws.onerror = () => {
+    st.textContent = 'ERROR'; st.className = 'ws-status error';
+    fallbackPolling();
+  };
+
+  ws.onclose = () => {
+    st.textContent = 'DISCONNECTED'; st.className = 'ws-status error';
+    reconnectTimer = setTimeout(connectWS, 3000);
+  };
+}
+
+let pollingActive = false;
+async function fallbackPolling() {
+  if (pollingActive) return;
+  pollingActive = true;
+  document.getElementById('wsStatus').textContent = 'POLLING';
+  document.getElementById('wsStatus').className = 'ws-status';
+
+  async function poll() {
+    try {
+      const [evRes, metRes, drRes] = await Promise.all([
+        fetch(`${API}/events?limit=20`),
+        fetch(`${API}/metrics`),
+        fetch(`${API}/drivers`),
+      ]);
+      const evData = await evRes.json();
+      const metData = await metRes.json();
+      const drData = await drRes.json();
+
+      // Detect new event (check top ID)
+      if (evData.length && (!events.length || evData[0].id !== events[0]?.id)) {
+        const newEvs = events.length ? evData.filter(e => e.id > (events[0]?.id || 0)) : evData;
+        newEvs.forEach(e => { addAlert(e); addTicker(e); pushLineData(e); updateHud(e); });
+        events = evData;
+        renderEventFeed();
+      }
+      renderMetrics(metData);
+      renderDrivers(drData);
+    } catch(e) {
+      document.getElementById('wsStatus').textContent = 'OFFLINE';
+      document.getElementById('wsStatus').className = 'ws-status error';
+    }
+    setTimeout(poll, 2500);
+  }
+  poll();
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  initCharts();
+  connectWS();
+
+  // Also try initial REST fetch
+  fetch(`${API}/drivers`).then(r => r.json()).then(renderDrivers).catch(() => {});
+  fetch(`${API}/metrics`).then(r => r.json()).then(renderMetrics).catch(() => {});
+  fetch(`${API}/events?limit=20`).then(r => r.json()).then(evs => {
+    if (evs.length) { events = evs; renderEventFeed(); }
+  }).catch(() => {});
+});
+</script>
+</body>
+</html>
