@@ -44,7 +44,6 @@ DB_PASSWORD=yourpassword
 DB_NAME=okdriver
 ```
 
-> **Skip MySQL entirely?** The app works without it using an in-memory store — perfect for testing.
 
 ### 3. Run the backend
 
@@ -59,7 +58,6 @@ The API will be live at: http://localhost:8000
 
 Just open `frontend/index.html` in your browser.
 
-> Tip: Use VS Code's Live Server extension or `python -m http.server 3000` in the frontend folder.
 
 ---
 
@@ -132,13 +130,6 @@ Just open `frontend/index.html` in your browser.
 
 ---
 
-## Submission Checklist
-
-- [x] GitHub repository
-- [x] Architecture diagram (see below)
-- [x] API documentation (above)
-- [ ] Demo video (record your screen with the dashboard running)
-
 ### Architecture Diagram
 
 ```
@@ -167,4 +158,5 @@ Just open `frontend/index.html` in your browser.
 │  drivers | trips | events                            │
 └──────────────────────────────────────────────────────┘
 ```
+
 
